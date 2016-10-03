@@ -1,25 +1,16 @@
-function figH = plotCenteroverY(Y, icenter, sizY, params)
+function plotCenteroverY(Y, icenter, sizY, params)
 % plotCenteroverY(Y, icenter, sizY, params)
-% Displays center or roi's over a XY, YZ and XZ projections of Y.
-% inputs:
-% Y : background image 2D or 3D matrix (spatial dimensions are 2D or 3D)
-% icenter: center or rois kxm (k == number of rois, m == spatial dimensions (2D or 3D))
-% sizY: spatial dimensions of Y or icenter (2D or 3D);
-% params: extra parameters that edit the figure fitures
-
+% This function plots the center of given ROIs (2D or 3D) over the max
+% projections of a background image
 global pi
 pi = [];
-pi.range = []; % fluorescence range (for caxis)
-pi.ititle = 'ROI centers'; % time lag
-pi.d2proj = [3 2 1]; % dimension to project
-pi.axesname = {'X', 'Y'; 'Z', 'Y'; 'Z', 'X'}; % axes name
-if length(sizY) == 3
-    pi.rColor = gradientgen(9, sizY(3)); % color of rois: colorcode the depth
-else
-    pi.rColor = gradientgen(9, size(icenter, 1)); % color of rois: colorcode the roi idx
-end
+pi.contcolor = {'y', 'g', 'r'};
+pi.range = [];
+pi.lag = 0.2;
+pi.d2proj = [3 2 1];
+pi.axesname = {'X', 'Y'; 'Z', 'Y'; 'Z', 'X'};
+pi.rColor = gradientgen(9, sizY(3));
 pi.c2plot = [2, 1; 3, 1; 3, 2];
-pi.figpos = [-1267 326 1156 510]; % figure position
 
 fop = fields(pi);
 if exist('params', 'var') && ~isempty(params)
@@ -31,7 +22,7 @@ if exist('params', 'var') && ~isempty(params)
 end
 
 %% Plotting
-figH = figure('position', pi.figpos);
+figH = figure('position', [-1267 326 1156 510]); % [213 311 1461 787]);
 colormap('gray')
 
 %% always reshape Y to target sizY
@@ -42,6 +33,9 @@ end
 
 function plotmuliproj(Y, icenter, sizY)
 global pi
+%% getting number of components
+tn = size(icenter, numel(sizY) + 1);
+
 %% figure features
 if numel(sizY) == 3
     hAxes(1) = subplot(1, 3, 1);
@@ -56,13 +50,16 @@ if isempty(pi.range)
     display(pi.range)
 end
 
-for a_idx = 1:length(hAxes)
-    plotproj(hAxes, Y, a_idx)
-    plotcenter(hAxes, icenter, a_idx)
+for t = 1:tn
+    for a_idx = 1:length(hAxes)
+        plotproj(hAxes, Y, a_idx, num2str(t))
+        plotcenter(hAxes, icenter, a_idx)
+    end
+    pause(pi.lag)
 end
 end
 
-function plotproj(hAxes, Y, idx)
+function plotproj(hAxes, Y, idx, tidx)
 global pi
 %% Plotting
 imagesc(squeeze(max(Y, [], pi.d2proj(idx))), 'Parent', hAxes(idx))
@@ -71,7 +68,7 @@ caxis(hAxes(idx), pi.range)
 if ~isempty(pi.range); caxis(hAxes(idx), pi.range); end
 xlabel(hAxes(idx), pi.axesname{idx, 1}); 
 ylabel(hAxes(idx), pi.axesname{idx, 2});
-title(hAxes(idx), pi.ititle);
+title(hAxes(idx), tidx);
 set(hAxes(idx), 'YTick', []); set(hAxes(idx), 'XTick', [])
 end
 
