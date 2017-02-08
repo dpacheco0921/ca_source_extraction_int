@@ -80,21 +80,10 @@ for i = 1:K_m
         indeces = setdiff(indeces,LOCS{ovlp_cmp(j)});
     end
     %amask = A(:,i)>0;
-    a_temp = reshape(A(:,i),options.d1,options.d2*options.d3);
-    [rows,temp] = find(a_temp>0);
-    [cols,plns] = ind2sub([options.d2,options.d3],temp);
-    if options.d3 > 1
-        a_temp = reshape(full(A(:,i)),options.d1,options.d2,options.d3);
-        a_temp = a_temp(min(rows):max(rows),min(cols):max(cols),min(plns):max(plns));
-    else
-        a_temp = a_temp(min(rows):max(rows),min(cols):max(cols));
-    end
-    
-    if options.d3 == 1
-        b_temp = reshape(b_rs(min(rows):max(rows),min(cols):max(cols),:),numel(a_temp),[]);
-    else
-        b_temp = reshape(b_rs(min(rows):max(rows),min(cols):max(cols),min(plns):max(plns),:),numel(a_temp),[]);
-    end
+    a_temp = reshape(A(:,i),options.d1,options.d2,options.d3);
+    [rows,cols] = find(a_temp>0);
+    a_temp = a_temp(min(rows):max(rows),min(cols):max(cols));
+    b_temp = reshape(b_rs(min(rows):max(rows),min(cols):max(cols),:),numel(a_temp),[]);
     if ~isempty(indeces)
         if memmaped      
             %rows = max(1,round(cm(i,1)-16)):min(options.d1,round(cm(i,1)+16));            
@@ -104,14 +93,10 @@ for i = 1:K_m
             time_intervals = mat2cell(time_indeces,1,diff(ff_time));
             y_temp = cell(1,length(time_intervals));
             parfor int = 1:length(time_intervals)
-                if options.d3 == 1
-                    y_temp{int} = Yr.Y(min(rows):max(rows),min(cols):max(cols),time_intervals{int});
-                else
-                    y_temp{int} = Yr.Y(min(rows):max(rows),min(cols):max(cols),min(plns):max(plns),time_intervals{int});
-                end
+                y_temp{int} = Yr.Y(min(rows):max(rows),min(cols):max(cols),time_intervals{int});
             end
             %y_temp = Yr.Y(min(rows):max(rows),min(cols):max(cols),:);
-            y_temp = cat(3+(options.d3>1),y_temp{:}); %cell2mat(y_temp);
+            y_temp = cat(3,y_temp{:}); %cell2mat(y_temp);
             y_temp = reshape(y_temp,[],length(indeces));            
     %         time_indeces = sort(indeces,'ascend');
     %         ff_time = [0,find(diff(time_indeces)>1),length(time_indeces)];
@@ -129,11 +114,7 @@ for i = 1:K_m
     %        mY_space = double(mean(data(amask,indeces),2) - b(amask,:)*mean(f(:,indeces),2));
     %        mY_time = double(mean(data(amask,indeces)) - mean(b(amask,:))*f(:,indeces));
         else
-            if options.d3 == 1
-                y_temp = Yr(min(rows):max(rows),min(cols):max(cols),indeces);
-            else
-                y_temp = Yr(min(rows):max(rows),min(cols):max(cols),min(plns):max(plns),indeces);
-            end
+            y_temp = Yr(min(rows):max(rows),min(cols):max(cols),indeces);
             y_temp = reshape(y_temp,[],length(indeces));   
         end
         mY_space = double(mean(y_temp,2) - b_temp*mean(f(:,indeces),2));
