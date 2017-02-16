@@ -45,7 +45,6 @@ end
 nr = K - options.nb;
 IND(:,nr+1:K) = true;
 T = size(C,2);
-sn = double(sn);
 
 if memmaped
     %d = size(A,1);
@@ -61,7 +60,7 @@ end
 %% initialization 
 A(~IND) = 0; 
 U = YC; 
-V = double(C*C'); 
+V = C*C'; 
 cc = diag(V);   % squares of l2 norm for all components 
 
 %% updating (neuron by neuron)
