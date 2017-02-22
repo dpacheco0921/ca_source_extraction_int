@@ -1,6 +1,7 @@
-function AY = mm_fun(A,Y,chunk_size,run_paralel)
-if ~exist('run_paralel', 'var') || isempty(run_paralel); run_paralel = false; end
+function AY = mm_fun(A,Y,chunk_size,run_paralel,FOV)
+if ~exist('run_paralel', 'var') || isempty(run_paralel); run_paralel = true; end
 if ~exist('chunk_size', 'var') || isempty(chunk_size); chunk_size = 2e4; end
+if ~exist('FOV', 'var') || isempty(FOV); FOV = [512,512]; end
 % multiply A*Y or A'*Y or Y*A or Y*C' depending on the dimension for loaded
 % or memory mapped Y.
 
@@ -26,7 +27,6 @@ if isa(Y,'char')
     elseif strcmpi(ext,'raw')
         filetype = 'raw';
         fid = fopen(Y);
-        FOV = [512,512];
         bitsize = 2;
         imsize = FOV(1)*FOV(2)*bitsize;                                                   % Bit size of single frame
         current_seek = ftell(fid);
