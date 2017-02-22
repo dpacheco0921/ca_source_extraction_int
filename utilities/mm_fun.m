@@ -2,6 +2,7 @@ function AY = mm_fun(A,Y,chunk_size,run_paralel,FOV)
 if ~exist('run_paralel', 'var') || isempty(run_paralel); run_paralel = true; end
 if ~exist('chunk_size', 'var') || isempty(chunk_size); chunk_size = 2e4; end
 if ~exist('FOV', 'var') || isempty(FOV); FOV = [512,512]; end
+
 % multiply A*Y or A'*Y or Y*A or Y*C' depending on the dimension for loaded
 % or memory mapped Y.
 
