@@ -50,22 +50,30 @@ if ~isfield(options,'classify_comp') || isempty(options.classify_comp); options.
 memmaped = isobject(data);
 if memmaped
     sizY = data.sizY;
+    if ~ismember('F_dark',who(data));
+        if ismember('nY',who(data))
+            data.F_dark = data.nY;
+        else
+            data.F_dark = 0;
+        end
+    end
+    F_dark = data.F_dark;
 else    % create a memory mapped object named data_file.mat    
     Y = data;
     clear data;
     sizY = size(Y);
     Yr = reshape(Y,prod(sizY(1:end-1)),[]);
-    nY = min(Yr(:));
+    F_dark = min(Yr(:));
     %Yr = Yr - nY;
     if options.create_memmap
-        save('data_file.mat','Yr','Y','nY','sizY','-v7.3');
+        save('data_file.mat','Yr','Y','F_dark','sizY','-v7.3');
         data = matfile('data_file.mat','Writable',true);
         memmaped = true;
     else
         data = Yr;
     end
 end
-
+F_dark = double(F_dark);
 if ~isfield(options,'d1') || isempty(options.d1); options.d1 = sizY(1); end
 if ~isfield(options,'d2') || isempty(options.d2); options.d2 = sizY(2); end
 if ~isfield(options,'d3') || isempty(options.d3); if length(sizY) == 3; options.d3 = 1; else options.d3 = sizY(3); end; end
@@ -118,7 +126,8 @@ parfor i = 1:length(patches)
         [d1,d2,d3,T] = size(Y);
     end
     %if ~(isa(Y,'single') || isa(Y,'double'));    Y = single(Y);  end
-    Y = double(Y);
+    Y = double(Y - F_dark);
+    Y(isnan(Y)) = F_dark;
     d = d1*d2*d3;
     options_temp = options;
     options_temp.d1 = d1; options_temp.d2 = d2; options_temp.d3 = d3;
@@ -132,10 +141,21 @@ parfor i = 1:length(patches)
     P.p = 0;
     options_temp.temporal_parallel = 0;
     [C,f,P,S] = update_temporal_components(Yr,A,b,Cin,fin,P,options_temp); % turn off parallel updating for temporal components
-    [Am,Cm,~,~,P] = merge_components(Yr,A,b,C,f,P,S,options_temp);
-    [A2,b2,Cm,P] = update_spatial_components(Yr,Cm,f,[Am,b],P,options_temp);
-    P.p = p;
-    [C2,f2,P2,S2] = update_temporal_components(Yr,A2,b2,Cm,f,P,options_temp);
+    if ~isempty(A) && ~isempty(C)
+        [Am,Cm,~,~,P] = merge_components(Yr,A,b,C,f,P,S,options_temp);
+        [A2,b2,Cm,P] = update_spatial_components(Yr,Cm,f,[Am,b],P,options_temp);
+        P.p = p;
+        [C2,f2,P2,S2] = update_temporal_components(Yr,A2,b2,Cm,f,P,options_temp);
+    else
+        %Am = A; Cm = C;
+        A2 = A;
+        b2 = b;
+        C2 = C;
+        f2 = f;
+        S2 = S;
+        P2 = P;
+    end
+    
     RESULTS(i).A = A2;
     RESULTS(i).C = C2;
     RESULTS(i).b = b2;
@@ -275,6 +295,10 @@ fprintf(' done. \n');
 
 if options.classify_comp
     fprintf('Classifying components...')
+    options.space_thresh = 0.3;
+    options.time_thresh = 0.3;
+    options.max_pr_thr = 0.75;
+    %[rval_space,rval_time,ind_space,ind_time] = classify_comp_corr(data,Am,Cm,[bin,ones(d,1)],[fin;F_dark*ones(1,size(fin,2))],options);
     [rval_space,rval_time,ind_space,ind_time] = classify_comp_corr(data,Am,Cm,bin,fin,options);
     ind = ind_space & ind_time;
     fprintf(' done. \n');
