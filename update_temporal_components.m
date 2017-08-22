@@ -85,6 +85,18 @@ if (strcmpi(method,'noise_constrained') || strcmpi(method,'project')) && ~isfiel
 else
     G = speye(T);
 end
+K = size(A,2);
+if K == 0    
+    C = [];
+    if exist('fin','var'); f = fin; else f = []; end
+    S = [];
+    YrA = [];
+    P.b = [];
+    P.c1 = [];
+    P.neuron_sn = [];
+    P.gn = [];
+    return
+end
 
 ff = find(sum(A)==0);
 if ~isempty(ff)
@@ -109,27 +121,31 @@ if isempty(fin) || nargin < 5   % temporal background missing
 end
 
 % construct product A'*Y
-step = 5e3;
-if memmaped
-    AY = zeros(size(A,2),T);
-    bY = zeros(size(b,2),T);
-    for i = 1:step:d
-        Y_temp = double(Y.Yr(i:min(i+step-1,d),:));
-        AY = AY + A(i:min(i+step-1,d),:)'*Y_temp;
-        bY = bY + b(i:min(i+step-1,d),:)'*Y_temp;
-    end
-else
-    if issparse(A) && isa(Y,'single')  
-        if full_A
-            AY = full(A)'*Y;            
-        else
-            AY = A'*double(Y);
-        end
-    else
-        AY = A'*Y;
-    end
-    bY = b'*Y;
-end  
+AY = mm_fun([A,double(b)],Y);
+bY = AY(size(A,2)+1:end,:);
+AY = AY(1:size(A,2),:);
+
+% step = 5e3;
+% if memmaped
+%     AY = zeros(size(A,2),T);
+%     bY = zeros(size(b,2),T);
+%     for i = 1:step:d
+%         Y_temp = double(Y.Yr(i:min(i+step-1,d),:));
+%         AY = AY + A(i:min(i+step-1,d),:)'*Y_temp;
+%         bY = bY + b(i:min(i+step-1,d),:)'*Y_temp;
+%     end
+% else
+%     if issparse(A) && ~isa(Y,'double')  
+%         if full_A
+%             AY = full(A)'*Y;            
+%         else
+%             AY = A'*double(Y);
+%         end
+%     else
+%         AY = A'*Y;
+%     end
+%     bY = b'*Y;
+% end  
 
 if isempty(Cin) || nargin < 4    % estimate temporal components if missing    
     Cin = max((A'*A)\double(AY - (A'*b)*fin),0);  

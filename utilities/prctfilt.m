@@ -13,7 +13,7 @@ function Y = prctfilt(X,p,window,shift,mode)
 
 if nargin < 2 || isempty(p); p = 20; end
 if nargin < 3 || isempty(window); window = 200; end
-if nargin < 4 || isempty(shift); shift = window; end
+if nargin < 4 || isempty(shift); shift = 200; end
 if nargin < 5 || isempty(mode); mode = 1; end
 
 sizX = size(X);
@@ -22,6 +22,9 @@ if ndims(X) == 1
 elseif ~ismatrix(X)
     X = reshape(X,[],sizX(end));
 end
+
+window = min(window,sizX(end));
+shift = min(shift,window);
 
 Xpad = [X(:,1:ceil((window-1)/2)),X,X(:,sizX(end) - (ceil((window-1)/2)-1:-1:0))];
 
