@@ -97,25 +97,31 @@ if nargin < 2 || isempty(K)
 end
 
 %% running CNMF on each patch, in parallel
-RESULTS(n_patches) = struct('A', [], 'b', [], 'C', [], 'f', [], 'S', [], 'P', []);
+%RESULTS(n_patches) = struct('A', [], 'b', [], 'C', [], 'f', [], 'S', [], 'P', []);
+RESULTS = CNMF();
+RESULTS(n_patches) = CNMF();
 
-if memmaped
+if memmaped    
     parfor i = 1:n_patches
         patch_idx = patch_to_indices(patches{i});
         Yp = data.Y(patch_idx{:},:);
-        RESULTS(i) = process_patch(Yp,F_dark, K, p, tau, options);
+        RESULTS(i) = process_patch_object(Yp,F_dark, K, p, tau, options);
         fprintf(['Finished processing patch # ',num2str(i),' out of ',num2str(n_patches), '.\n']);
+        RESULTS(i).Y = [];
+        RESULTS(i).Yr = [];
     end
 
 else  % avoid copying the entire dataset to each worker, for in-memory data
     for i = n_patches:-1:1
         patch_idx = patch_to_indices(patches{i});
         Yp = Y(patch_idx{:},:);
-        future_results(i) = parfeval(@process_patch, 1, Yp, F_dark, K, p, tau, options);
+        future_results(i) = parfeval(@process_patch_object, 1, Yp, F_dark, K, p, tau, options);
     end
     for i = 1:n_patches
         [idx, value] = fetchNext(future_results);
         RESULTS(idx) = value;
+        RESULTS(idx).Y = [];
+        RESULTS(idx).Yr = [];
         fprintf(['Finished processing patch # ',num2str(i),' out of ',num2str(n_patches), '.\n']);
     end
 end
@@ -305,7 +311,7 @@ function result = process_patch(Y, F_dark, K, p, tau, options)
     end
     options.nb = 1;
     options.temporal_parallel = 0;  % turn off parallel updating for temporal components
-    options.spatial_parallel = 0;  % turn off parallel updating for spatial components
+    options.spatial_parallel = 0;   % turn off parallel updating for spatial components
     options.space_thresh = options.patch_space_thresh;    % put a low acceptance threshold initially
     options.time_thresh = options.patch_time_thresh;
 
@@ -318,17 +324,29 @@ function result = process_patch(Y, F_dark, K, p, tau, options)
     [Ain,Cin,bin,fin] = initialize_components(Y,K,tau,options,P);
     [A,b,Cin,P] = update_spatial_components(Yr,Cin,fin,[Ain,bin],P,options);
     P.p = 0;
+    options.p = 0;
     [C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cin,fin,P,options);
 
     if ~isempty(A) && ~isempty(C)
         [Am,Cm,~,~,P] = merge_components(Yr,A,b,C,f,P,S,options);
         [A,b,Cm,P] = update_spatial_components(Yr,Cm,f,[Am,b],P,options);
-        P.p = p;
         [C,f,P,S,YrA] = update_temporal_components(Yr,A,b,Cm,f,P,options);
-        [rval_space,rval_time,ind_space,ind_time] = classify_comp_corr(Y,A,C,b,f,options);ind = ind_space & ind_time;        
-        fitness = compute_event_exceptionality(C+YrA,0);
-        fitness_delta = compute_event_exceptionality(diff(C+YrA,[],2),0);
-        ind = (ind_space & ind_time) | (fitness < options.patch_max_fit) | (fitness_delta < options.patch_max_fit_delta);
+        [rval_space,rval_time,ind_space,ind_time] = classify_comp_corr(Y,A,C,b,f,options); 
+        %ind = ind_space & ind_time;        
+        ind_corr = ind_space;
+        
+        try  % matlab 2017b or later is needed
+            [ind_cnn,value] = cnn_classifier(A,[options.d1,options.d2],'cnn_model',options.cnn_thr);
+        catch
+            ind_cnn = true(size(A,2),1);                        % components that pass the CNN classifier
+        end     
+
+        fitness = compute_event_exceptionality(C+YrA,options.N_samples_exc,options.robust_std);
+        ind_exc = (fitness < options.min_fitness);
+        ind = (ind_corr | ind_cnn) & ind_exc;
+        %fitness_delta = compute_event_exceptionality(diff(C+YrA,[],2),0);
+        %ind = (ind_space & ind_time) | (fitness < options.patch_max_fit) | (fitness_delta < options.patch_max_fit_delta);
+        
         P.rval_space = rval_space;
         P.rval_time = rval_time;
         P.ind_space = ind_space;
@@ -344,4 +362,21 @@ function result = process_patch(Y, F_dark, K, p, tau, options)
     result.f = f;
     result.S = S;
     result.P = P;
+end
+
+function CNM = process_patch_object(Y,F_dark,K,p,tau,options)
+    CNM = CNMF();
+    if ndims(Y) > 3; d3 = size(Y,3); else; d3 = 1; end 
+    options = CNMFSetParms(options,...
+                'd1',size(Y,1),...
+                'd2',size(Y,2),...
+                'd3',d3,...
+                'p',p,...
+                'gSig',tau,...
+                'temporal_parallel',false,...
+                'spatial_parallel',false,...
+                'space_thresh',options.patch_space_thresh);
+    Y = single(Y) - single(F_dark);
+    Y(isnan(Y)) = single(F_dark);
+    CNM.fit(Y,options,K);                
 end

@@ -63,18 +63,19 @@ Names = [
     'min_size           ' % minimum size of ellipse axis (default: 3)
     'max_size           ' % maximum size of ellipse axis (default: 8)
     'dist               ' % expansion factor of ellipse (default: 3)
-    'se                 ' % morphological element for dilation (default: strel('disk',4,0))
+    'se                 ' % morphological element for dilation (default: strel('disk',1,0))
     % threshold_components.m
     'thr_method         ' % method to threshold ('max' or 'nrg', default 'max')
-    'maxthr             ' % threshold of max value below which values are discarded (default: 0.1)
+    'maxthr             ' % threshold of max value below which values are discarded (default: 0.25)
     'nrgthr             ' % energy threshold (default: 0.995)
     'clos_op            ' % morphological element for closing (default: strel('square',3))
     'medw               ' % size of median filter (default: [3,3])
     'conn_comp          ' % extract largest connected component (binary, default: true)
     % UPDATING TEMPORAL COMPONENTS (update_temporal_components.m)
-    'deconv_method      '    % method for spike deconvolution (default: 'constrained_foopsi')
-    'restimate_g        '    % flag for updating the time constants for each component (default: 1)
-    'temporal_iter      '    % number of block-coordinate descent iterations (default: 2)
+    'p                  ' % order of AR model dynamics (default: 1)
+    'deconv_method      ' % method for spike deconvolution (default: 'constrained_foopsi')
+    'restimate_g        ' % flag for updating the time constants for each component (default: 1)
+    'temporal_iter      ' % number of block-coordinate descent iterations (default: 2)
     'temporal_parallel  ' % flag for parallel updating of temporal components (default: true if present)
     'full_A             ' % if true turn A into full matrix. If false turn Y into double precision (default: false)
     % CONSTRAINED DECONVOLUTION (constrained_foopsi.m)
@@ -82,6 +83,9 @@ Names = [
     'bas_nonneg         ' % flag for setting the baseline lower bound. if 1, then b >= 0 else b >= min(y) (default 1)
     'fudge_factor       ' % scaling constant to reduce bias in the time constant estimation (default 1 - no scaling)
     'resparse           ' % number of times that the solution is resparsened (default: 0)
+    % OASIS penalty parameters (deconvolveCa.m)
+    'lam_pr             ' % false positive probability for determing lambda penalty
+    'spk_SNR            ' % spike SNR for min spike value
     % MERGING (merge_ROIs.m)
     'merge_thr          ' % merging threshold (default: 0.85)
     'fast_merge         ' % flag for using fast merging (default 1)
@@ -89,7 +93,8 @@ Names = [
     'df_prctile         ' % percentile to be defined as baseline (default 20)
     'df_window          ' % length of running window (default [], no window)
     % CONTOUR PLOTS (plot_contours.m)
-    'cont_threshold     '
+    'plot_bck_image     ' % plot background image or overlay on existing one (deafult: true)
+    'cont_threshold     ' 
     % VIDEO (make_patch_video.m)
     'ind                ' % indeces of components to be shown (deafult: 1:4)
     'skip_frame         ' % skip frames when showing the video (default: 1 (no skipping))
@@ -110,8 +115,8 @@ Names = [
     'space_thresh       ' % threshold for r-value in space (default: 0.4)
     'time_thresh        ' % threshold for r-value in time (default: 0.4)
     'A_thresh           ' % threshold for determining overlap (default: 0.1)
-    'Npeaks             ' % # of peaks to be considered (default: 20)
-    'peak_int           ' % interval around the peak (default: -2:6)
+    'Npeaks             ' % # of peaks to be considered (default: 5)
+    'peak_int           ' % interval around the peak (default: -2:5)
     'MinPeakDist        ' % minimum peak distance for finding points of high activity  (default: 10)
     % ORDER COMPONENTS (order_components.m)
     'nsd                ' % number of standard deviations (default: 3)
@@ -145,9 +150,16 @@ Names = [
     'dist_thr           ' % distance threshold above which dist = Inf (default: 0.5)
     'dist_maxthr        ' % max thresholding for components before turing into binary masks (default: 0.15)
     'dist_overlap_thr   ' % threshold for detecting if one ROI is a subset of another (deafult: 0.8)
+    'plot_reg           ' % plot registered ROIs (default: true)
     % parameters for computing event exceptionality (compute_event_exceptionality.m)
-    'min_fitness        ' % threshold on time variability
+    'min_SNR            ' % minimum SNR for accepting exceptional events
+    'decay_time         ' % length of a typical transient in seconds
+    'robust_std         ' % use robust std for computing noise in traces (false)
+    'N_samples_exc      ' % number of samples over which to compute (default: ceil(decay_time*fr))
+    'min_fitness        ' % threshold on time variability  (default: log(normcdf(-min_SNR))*N_samples_exc)    
     'min_fitness_delta  ' % threshold on the derivative of time variability
+    % parameters for CNN classifier (cnn_classifier.m)
+    'cnn_thr            ' % threshold for CNN classifier (default: 0.2)
     ];
 
 [m,~] = size(Names);
@@ -284,15 +296,16 @@ Values = [
     {3}
     {8}
     {3}
-    {strel('disk',4,0)}
+    {strel('disk',1,0)}
     % threshold_components.m
     {'max'}
-    {0.1}
+    {0.25}
     {0.995}
     {strel('square',3)}
     {[3,3]}
     {true}
     % UPDATING TEMPORAL COMPONENTS (update_temporal_components.m)
+    {1}
     {'constrained_foopsi'}
     {1}
     {2}
@@ -301,8 +314,11 @@ Values = [
     % CONSTRAINED DECONVOLUTION (constrained_foopsi.m)
     {'cvx'}
     {1}
-    {0.99}
+    {0.98}
     {0}
+    % OASIS penalty parameters (deconvolveCa.m)
+    {0.99}
+    {0.5}
     % MERGING (merge_ROIs.m)
     {0.85}
     {1}
@@ -310,6 +326,7 @@ Values = [
     {20}
     {[]}
     % CONTOUR PLOTS (plot_contours.m)
+    {true}
     {0.9}
     % VIDEO (make_patch_video.m)
     {1:4}
@@ -328,11 +345,11 @@ Values = [
     % CLASSIFY COMPONENTS PIXELS (classify_components_pixels.m)
     {0.8}
     % CLASSIFY COMPONENTS with CORRELATION (classify_comp_corr.m)
-    {0.35}
-    {0.35}
+    {0.4}
+    {0.4}
     {0.1}
-    {10}
-    {-2:7}
+    {5}
+    {-2:6}
     {10}
     % ORDER COMPONENTS (order_components.m)
     {3}
@@ -366,9 +383,16 @@ Values = [
     {0.5}
     {0.15}
     {0.8}
+    {true}
     % parameters for computing event exceptionality (compute_event_exceptionality.m)
-    {-15}
+    {2}
+    {0.4}
+    {false}
+    {[]}
+    {[]}
     {-5}
+    % parameters for CNN classifier (cnn_classifier.m)
+    {0.2}
     ];
 
 for j = 1:m
@@ -376,3 +400,6 @@ for j = 1:m
         eval(['options.' Names(j,:) '= Values{j};']);
     end
 end
+
+if isempty(options.N_samples_exc); options.N_samples_exc = ceil(options.fr*options.decay_time); end
+if isempty(options.min_fitness); options.min_fitness = log(normcdf(-options.min_SNR))*options.N_samples_exc; end
