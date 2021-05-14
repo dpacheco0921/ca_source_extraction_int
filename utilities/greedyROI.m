@@ -208,7 +208,11 @@ for r = 1:length(K)
             else
                 dataTemp(iLag(1,1):iLag(1,2), iLag(2,1):iLag(2,2), iLag(3,1):iLag(3,2)) = reshape(coef, iSigLen(:)');
             end
-            dataTemp = imblur(dataTemp, gSig, gSiz, dimY, 0, chunkSiz);
+            
+            % dataTemp = imblur(dataTemp, gSig, gSiz, dimY, 0, chunkSiz);
+            % fix bug when gaussian dim is lower than dimY (e.g, using a 2D gaussian for 3D data)
+            dataTemp = imblur(dataTemp, gSig(1:length(size(dataTemp))), gSiz(1:length(size(dataTemp))), length(size(dataTemp)), 0, chunkSiz);
+            
             rhoTemp = bsxfun(@times, dataTemp, reshape(score, [ones(1,dimY),T]));
             if dimY == 2
                 rhoTemp = rho(iMod(1,1):iMod(1,2), iMod(2,1):iMod(2,2), :)  - rhoTemp;
