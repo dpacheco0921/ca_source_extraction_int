@@ -32,24 +32,9 @@ C = bsxfun(@times,C,nA(:));
 
 nb = size(f,1);     % number of background components
 
-step = 5e3;
-if memmaped
-    AY = zeros(K,T);
-    for j = 1:step:d
-        AY = AY + A(j:min(j+step-1,d),:)'*double(Y.Yr(j:min(j+step-1,d),:));
-    end
-else
-    if issparse(A) && isa(Y,'single')          
-        if full_A
-            AY = full(A)'*Y;
-        else
-            AY = A'*double(Y);
-        end
-    else
-        AY = A'*Y;
-    end
-end
-Y_r = (AY- (A'*A)*C - full(A'*double(b))*f) + C;
+AY = mm_fun(A, Y);
+
+Y_r = (AY - (A'*A)*C - full(A'*double(b))*f) + C;
 
 if plot_df
     [~,Df] = extract_DF_F(Y,[A,double(b)],[C;f],[],options);
