@@ -3,31 +3,37 @@ clear;
 addpath(genpath('../NoRMCorre'));               % add the NoRMCorre motion correction package to MATLAB path
 gcp;                                            % start a parallel engine
 foldername = '';
-        % folder where all the files are located. Currently supported .tif,
-        % .hdf5, .raw, .avi, and .mat files
-files = subdir(fullfile(foldername,'*.tif'));   % list of filenames (will search all subdirectories)
+         % folder where all the files are located.
+filetype = 'tif'; % type of files to be processed
+        % Types currently supported .tif/.tiff, .h5/.hdf5, .raw, .avi, and .mat files
+files = subdir(fullfile(foldername,['*.',filetype]));   % list of filenames (will search all subdirectories)
 FOV = size(read_file(files(1).name,1,1));
 numFiles = length(files);
+
 
 %% motion correct (and save registered h5 files as 2d matrices (to be used in the end)..)
 % register files one by one. use template obtained from file n to
 % initialize template of file n + 1; 
 
-motion_correct = true;                                         % perform motion correction
-non_rigid = true;                                               % flag for non-rigid motion correction
+motion_correct = true;                            % perform motion correction
+non_rigid = true;                                 % flag for non-rigid motion correction
+output_type = 'h5';                               % format to save registered files
+
 if non_rigid; append = '_nr'; else; append = '_rig'; end        % use this to save motion corrected files
+
 options_mc = NoRMCorreSetParms('d1',FOV(1),'d2',FOV(2),'grid_size',[128,128],'init_batch',200,...
-                'overlap_pre',64,'mot_uf',4,'bin_width',200,'max_shift',24,'max_dev',8,'us_fac',50,...
-                'output_type','h5');
+                'overlap_pre',32,'mot_uf',4,'bin_width',200,'max_shift',24,'max_dev',8,'us_fac',50,...
+                'output_type',output_type);
 
 template = [];
 col_shift = [];
 for i = 1:numFiles
     fullname = files(i).name;
-    [folder_name,file_name,ext] = fileparts(fullname);    
-    options_mc.h5_filename = fullfile(folder_name,[file_name,append,'.h5']);
-    if motion_correct    
-        [M,shifts,template,options_mc,col_shift] = normcorre_batch(fullname,options_mc,template);
+    [folder_name,file_name,ext] = fileparts(fullname);
+    output_filename = fullfile(folder_name,[file_name,append,'.',output_type]);
+    options_mc = NoRMCorreSetParms(options_mc,'output_filename',output_filename,'h5_filename','','tiff_filename',''); % update output file name
+    if motion_correct
+        [M,shifts,template,options_mc,col_shift] = normcorre_batch_even(fullname,options_mc,template);
         save(fullfile(folder_name,[file_name,'_shifts',append,'.mat']),'shifts','-v7.3');           % save shifts of each file at the respective folder        
     else    % if files are already motion corrected convert them to h5
         convert_file(fullname,'h5',fullfile(folder_name,[file_name,'_mc.h5']));
@@ -37,15 +43,15 @@ end
 %% downsample h5 files and save into a single memory mapped matlab file
 
 if motion_correct
-    h5_files = subdir(fullfile(foldername,['*',append,'.h5']));  % list of h5 files (modify this to list all the motion corrected files you need to process)
+    registered_files = subdir(fullfile(foldername,['*',append,'.',output_type]));  % list of registered files (modify this to list all the motion corrected files you need to process)
 else
-    h5_files = subdir(fullfile(foldername,'*_mc.h5'));
+    registered_files = subdir(fullfile(foldername,'*_mc.h5'));
 end
     
 fr = 30;                                         % frame rate
 tsub = 5;                                        % degree of downsampling (for 30Hz imaging rate you can try also larger, e.g. 8-10)
 ds_filename = [foldername,'/ds_data.mat'];
-data_type = class(read_file(h5_files(1).name,1,1));
+data_type = class(read_file(registered_files(1).name,1,1));
 data = matfile(ds_filename,'Writable',true);
 data.Y  = zeros([FOV,0],data_type);
 data.Yr = zeros([prod(FOV),0],data_type);
@@ -57,7 +63,7 @@ Ts = zeros(numFiles,1);                          % store length of each file
 cnt = 0;                                         % number of frames processed so far
 tt1 = tic;
 for i = 1:numFiles
-    name = h5_files(i).name;
+    name = registered_files(i).name;
     info = h5info(name);
     dims = info.Datasets.Dataspace.Size;
     ndimsY = length(dims);                       % number of dimensions (data array might be already reshaped)
@@ -67,7 +73,7 @@ for i = 1:numFiles
     data.Yr(prod(FOV),sum(floor(Ts/tsub))) = zeros(1,data_type);
     cnt_sub = 0;
     for t = 1:batch_size:Ts(i)
-        Y = bigread2(name,t,min(batch_size,Ts(i)-t+1));    
+        Y = read_file(name,t,min(batch_size,Ts(i)-t+1));    
         F_dark = min(nanmin(Y(:)),F_dark);
         ln = size(Y,ndimsY);
         Y = reshape(Y,[FOV,ln]);
@@ -99,35 +105,35 @@ sizY = data.sizY;
 options = CNMFSetParms(...
     'd1',sizY(1),'d2',sizY(2),...
     'deconv_method','constrained_foopsi',...    % neural activity deconvolution method
-    'temporal_iter',2,...                       % number of block-coordinate descent steps 
+    'p',p,...                                   % order of calcium dynamics
     'ssub',2,...                                % spatial downsampling when processing
-    'tsub',4,...                                % further temporal downsampling when processing
+    'tsub',2,...                                % further temporal downsampling when processing
     'merge_thr',merge_thr,...                   % merging threshold
     'gSig',tau,... 
     'max_size_thr',300,'min_size_thr',10,...    % max/min acceptable size for each component
     'spatial_method','regularized',...          % method for updating spatial components
     'df_prctile',50,...                         % take the median of background fluorescence to compute baseline fluorescence 
     'fr',fr/tsub,...                            % downsamples
-    'space_thresh',0.5,...                      % space correlation acceptance threshold
-    'min_SNR',3.0,...                           % trace SNR acceptance threshold
+    'space_thresh',0.35,...                     % space correlation acceptance threshold
+    'min_SNR',2.0,...                           % trace SNR acceptance threshold
     'cnn_thr',0.2,...                           % cnn classifier acceptance threshold
     'nb',1,...                                  % number of background components per patch
     'gnb',3,...                                 % number of global background components
-    'decay_time',0.5...                        % length of typical transient for the indicator used
+    'decay_time',0.5...                         % length of typical transient for the indicator used
     );
 
 %% Run on patches (the main work is done here)
 
-[A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data,K,patches,tau,0,options);  % do not perform deconvolution here since
-                                                                             % we are operating on downsampled data
+[A,b,C,f,S,P,RESULTS,YrA] = run_CNMF_patches(data.Y,K,patches,tau,0,options);  % do not perform deconvolution here since
+                                                                               % we are operating on downsampled data
 %% compute correlation image on a small sample of the data (optional - for visualization purposes) 
-Cn = correlation_image_max(data.Y,8);
+Cn = correlation_image_max(data,8);
 
 %% classify components
 
 rval_space = classify_comp_corr(data,A,C,b,f,options);
 ind_corr = rval_space > options.space_thresh;           % components that pass the correlation test
-                                        % this test will keep processes
+                                                        % this test will keep processes
                                         
 %% further classification with cnn_classifier
 try  % matlab 2017b or later is needed
@@ -159,22 +165,22 @@ throw = ~keep;
 Coor_k = [];
 Coor_t = [];
 figure;
-    ax1 = subplot(121); plot_contours(A(:,keep),Cn,options,0,[],Coor_k,1,find(keep)); title('Selected components','fontweight','bold','fontsize',14);
-    ax2 = subplot(122); plot_contours(A(:,throw),Cn,options,0,[],Coor_t,1,find(throw));title('Rejected components','fontweight','bold','fontsize',14);
+    ax1 = subplot(121); plot_contours(A(:,keep),Cn,options,0,[],Coor_k,[],1,find(keep)); title('Selected components','fontweight','bold','fontsize',14);
+    ax2 = subplot(122); plot_contours(A(:,throw),Cn,options,0,[],Coor_t,[],1,find(throw));title('Rejected components','fontweight','bold','fontsize',14);
     linkaxes([ax1,ax2],'xy')
     
-    %% keep only the active components    
+%% keep only the active components    
+
 A_keep = A(:,keep);
 C_keep = C(keep,:);
 
-%% deconvolve (downsampled) temporal components plot GUI with components (optional)
+%% extract residual signals for each trace
 
-% tic;
-% [C_keep,f_keep,Pk,Sk,YrAk] = update_temporal_components_fast(data,A_keep,b,C_keep,f,P,options);
-% toc
-% 
-% plot_components_GUI(data,A_keep,C_keep,b,f,Cn,options)
-if exist('YrAk','var'); R_keep = YrAk; else; R_keep = YrA(keep,:); end
+if exist('YrA','var') 
+    R_keep = YrA(keep,:); 
+else
+    R_keep = compute_residuals(data,A_keep,b,C_keep,f);
+end
     
 %% extract fluorescence on native temporal resolution
 
@@ -193,13 +199,13 @@ ind_T = [0;cumsum(Ts(:))];
 options.nb = options.gnb;
 for i = 1:numFiles
     inds = ind_T(i)+1:ind_T(i+1);   % indeces of file i to be updated
-    [C_full(:,inds),f_full(:,inds),~,~,R_full(:,inds)] = update_temporal_components_fast(h5_files(i).name,A_keep,b,C_full(:,inds),f_full(:,inds),P,options);
+    [C_full(:,inds),f_full(:,inds),~,~,R_full(:,inds)] = update_temporal_components_fast(registered_files(i).name,A_keep,b,C_full(:,inds),f_full(:,inds),P,options);
     disp(['Extracting raw fluorescence at native frame rate. File ',num2str(i),' out of ',num2str(numFiles),' finished processing.'])
 end
 
 %% extract DF/F and deconvolve DF/F traces
 
-[F_dff,F0] = detrend_df_f(A_keep,b,C_full,f_full,R_full,options);
+[F_dff,F0] = detrend_df_f(A_keep,[b,ones(prod(FOV),1)],C_full,[f_full;-double(F_dark)*ones(1,T)],R_full,options);
 
 C_dec = zeros(N,T);         % deconvolved DF/F traces
 S_dec = zeros(N,T);         % deconvolved neural activity

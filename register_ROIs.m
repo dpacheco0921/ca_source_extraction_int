@@ -58,13 +58,12 @@ siz = [options.d1,options.d2,options.d3];
 options_mc.correct_bidir = false;
 if align_flag
     options_mc.upd_template = false;
-    options_mc.boundary = 'zero';
+    options_mc.boundary = 'copy';
     [~,global_shift] = normcorre(template2,options_mc,template1);
     %global_shift(1).diff = 0*global_shift(1).diff;
     
     shifts_fov = reshape(imresize(global_shift.shifts,[options.d1,options.d2]),[],2);
     shifts_components = sparse(diag(1./sum(A2)))*A2'*shifts_fov;
-    A_backup2 = A2; %store initial values in any case
     parfor i = 1:K2
        %warning('off','MATLAB:mat2cell:TrailingUnityVectorArgRemoved');
        a_temp = reshape(full(A2(:,i)),siz);

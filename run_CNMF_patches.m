@@ -223,12 +223,14 @@ fprintf(' done. \n');
 
 %% compute spatial and temporal background using a rank-1 fit
 fprintf('Computing background components...')
-fin = [mean(F,1);rand(options.gnb-1,size(F,2))];
-for iter = 1:150
-    fin = diag(sqrt(sum(fin.^2,2)))\fin;
-    bin = full(max(B*(F*fin')/(fin*fin'),0));
-    fin = max((bin'*bin)\(bin'*B)*F,0);
-end
+% fin = [mean(F,1);rand(options.gnb-1,size(F,2))];
+% for iter = 1:150
+%     fin = diag(sqrt(sum(fin.^2,2)))\fin;
+%     bin = full(max(B*(F*fin')/(fin*fin'),0));
+%     fin = max((bin'*bin)\(bin'*B)*F,0);
+% end
+[bin,fin] = fast_nmf(B,F,options.gnb,100);
+
 fprintf(' done. \n');
 
 %% classify components
@@ -366,7 +368,7 @@ end
 
 function CNM = process_patch_object(Y,F_dark,K,p,tau,options)
     CNM = CNMF();
-    if ndims(Y) > 3; d3 = size(Y,3); else; d3 = 1; end 
+    if ndims(Y) > 3; d3 = size(Y,3); else; d3 = 1; end
     options = CNMFSetParms(options,...
                 'd1',size(Y,1),...
                 'd2',size(Y,2),...
@@ -375,7 +377,10 @@ function CNM = process_patch_object(Y,F_dark,K,p,tau,options)
                 'gSig',tau,...
                 'temporal_parallel',false,...
                 'spatial_parallel',false,...
-                'space_thresh',options.patch_space_thresh);
+                'space_thresh',options.patch_space_thresh,...
+                'time_thresh',options.patch_time_thresh,...
+                'cnn_thr',options.patch_cnn_thr,...
+                'min_fitness',options.patch_min_fitness);
     Y = single(Y) - single(F_dark);
     Y(isnan(Y)) = single(F_dark);
     CNM.fit(Y,options,K);                
